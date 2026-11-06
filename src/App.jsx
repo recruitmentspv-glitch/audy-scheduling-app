@@ -29,7 +29,6 @@ const getWeekDates = (weekOffset = 0) => {
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
     
-    // Format YYYY-MM-DD
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
@@ -51,24 +50,18 @@ const ALL_DATES = [
 
 const generateSlots = () => {
   const startTimes = [
-    '09:00', '09:20', '09:40', '10:00', '10:20', '10:40',
-    '11:00', '11:20', '11:40', '13:00', '13:20', '13:40',
-    '14:00', '14:20', '14:40'
+    '09:30', '09:50', '10:10', '10:30', '10:50', '11:10', '11:30', '11:50', // Pagi
+    '13:30', '13:50', '14:10', '14:30', '14:50', '15:10', '15:30', '15:50'  // Siang
   ];
   
   let allSlots = [];
   ALL_DATES.forEach(dateObj => {
-    startTimes.forEach((time, i) => {
-      const [h, m] = time.split(':').map(Number);
-      const d = new Date(); 
-      d.setHours(h, m + 20);
-      const endTime = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-      
+    startTimes.forEach((time) => {
       allSlots.push({
         id: `${dateObj.id}-${time}`,
         dateId: dateObj.id,
         dateLabel: dateObj.label,
-        time: `${time} - ${endTime}`,
+        time: time, 
         recruitersState: {} 
       });
     });
@@ -92,7 +85,6 @@ export default function App() {
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState(false);
 
-  // Load Data Bookings & Settings from Google Script on mount
   useEffect(() => {
     fetchData();
   }, []);
@@ -104,24 +96,22 @@ export default function App() {
       const data = await res.json();
       
       if (data && data.bookings) {
-        // Merge bookings and active slots into local state
         setSlots(prevSlots => prevSlots.map(slot => {
           let updatedState = { ...slot.recruitersState };
           
-          // Apply active states (opened by recruiters)
           if (data.activeSlots && data.activeSlots[slot.id]) {
             data.activeSlots[slot.id].forEach(recId => {
                if(!updatedState[recId]) updatedState[recId] = { isBooked: false };
             });
           }
 
-          // Apply booked states
           const bookedInThisSlot = data.bookings.filter(b => b.dateId === slot.dateId && b.timeStr === slot.time);
           bookedInThisSlot.forEach(b => {
              updatedState[b.recruiterId] = {
                isBooked: true,
                candidateName: b.candidateName,
                candidateEmail: b.candidateEmail,
+               position: b.position,
                fileName: b.fileName,
                meetLink: b.meetLink
              };
@@ -150,7 +140,6 @@ export default function App() {
   };
 
   const handleToggleActive = async (slotId, recruiterId, isActiveNow) => {
-    // Optimistic UI Update
     setSlots(slots.map(slot => {
       if (slot.id === slotId) {
         const newState = { ...slot.recruitersState };
@@ -161,22 +150,23 @@ export default function App() {
       return slot;
     }));
 
-    // Save to Backend (Fire and forget config)
     try {
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
-        body: JSON.stringify({
-          action: 'toggleSlot',
-          slotId: slotId,
-          recruiterId: recruiterId,
-          isOpen: !isActiveNow
-        })
+        body: JSON.stringify({ action: 'toggleSlot', slotId, recruiterId, isOpen: !isActiveNow })
       });
     } catch (e) { console.error(e); }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-12">
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-12">
+      <style dangerouslySetInnerHTML={{__html: `
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+        body, input, button, select, textarea {
+          font-family: 'Poppins', sans-serif !important;
+        }
+      `}} />
+
       <nav className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex justify-between items-center h-16">
@@ -247,12 +237,7 @@ export default function App() {
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Lock className="w-5 h-5 text-slate-500" /> Akses Terbatas
               </h3>
-              <button 
-                onClick={() => {setShowPinModal(false); setPinError(false);}} 
-                className="text-slate-400 hover:text-slate-600 bg-slate-50 p-1.5 rounded-full"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => {setShowPinModal(false); setPinError(false);}} className="text-slate-400 hover:text-slate-600 bg-slate-50 p-1.5 rounded-full"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleRecruiterLogin}>
               <input 
@@ -264,7 +249,7 @@ export default function App() {
                 autoFocus
               />
               {pinError && <p className="text-xs text-red-500 mb-4">PIN tidak valid.</p>}
-              <button type="submit" className="w-full mt-4 py-3 bg-emerald-600 text-white rounded-xl">Buka Dasbor</button>
+              <button type="submit" className="w-full mt-4 py-3 bg-emerald-600 text-white rounded-xl font-semibold">Buka Dasbor</button>
             </form>
           </div>
         </div>
@@ -315,11 +300,7 @@ function RecruiterView({ slots, onToggleActive }) {
           <div><h1 className="text-2xl font-bold text-slate-800">Panel Rekrutmen</h1></div>
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-slate-600">Profil:</label>
-            <select 
-              value={activeRecruiterId}
-              onChange={(e) => setActiveRecruiterId(e.target.value)}
-              className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg p-2.5 outline-none font-semibold"
-            >
+            <select value={activeRecruiterId} onChange={(e) => setActiveRecruiterId(e.target.value)} className="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg p-2.5 outline-none font-semibold">
               {RECRUITERS.map(r => (<option key={r.id} value={r.id}>{r.name}</option>))}
             </select>
           </div>
@@ -333,15 +314,13 @@ function RecruiterView({ slots, onToggleActive }) {
         {activeTab === 'atur' ? (
           <>
             <div className="flex items-center justify-between bg-slate-50 rounded-xl p-2 mb-4">
-              <button onClick={() => changeWeek(-1)} disabled={weekOffset === 0} className="px-3 py-1.5 text-sm bg-white border rounded-lg disabled:opacity-50"><ChevronLeft className="inline w-4 h-4" /> Minggu Seb.</button>
+              <button onClick={() => changeWeek(-1)} disabled={weekOffset === 0} className="px-3 py-1.5 text-sm bg-white border rounded-lg disabled:opacity-50 font-medium"><ChevronLeft className="inline w-4 h-4" /> Minggu Seb.</button>
               <div className="font-semibold text-slate-700 text-sm">{weekOffset === 0 ? 'Minggu Ini' : `Minggu +${weekOffset}`}</div>
-              <button onClick={() => changeWeek(1)} disabled={weekOffset === 3} className="px-3 py-1.5 text-sm bg-white border rounded-lg disabled:opacity-50">Minggu Depan <ChevronRight className="inline w-4 h-4" /></button>
+              <button onClick={() => changeWeek(1)} disabled={weekOffset === 3} className="px-3 py-1.5 text-sm bg-white border rounded-lg disabled:opacity-50 font-medium">Minggu Depan <ChevronRight className="inline w-4 h-4" /></button>
             </div>
             <div className="flex overflow-x-auto gap-2 mb-6 pb-2 scrollbar-hide border-b border-slate-100">
               {visibleDates.map(dateObj => (
-                <button key={dateObj.id} onClick={() => setSelectedDateId(dateObj.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${selectedDateId === dateObj.id ? 'bg-indigo-100 text-indigo-700' : 'bg-white text-slate-500'}`}>
-                  {dateObj.label}
-                </button>
+                <button key={dateObj.id} onClick={() => setSelectedDateId(dateObj.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap ${selectedDateId === dateObj.id ? 'bg-indigo-100 text-indigo-700' : 'bg-white text-slate-500'}`}>{dateObj.label}</button>
               ))}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -363,7 +342,7 @@ function RecruiterView({ slots, onToggleActive }) {
                     </div>
                     {isBooked ? (
                       <div className="bg-white p-3 rounded-lg border border-emerald-100">
-                        <div className="text-xs font-semibold text-emerald-600">Kandidat</div>
+                        <div className="text-xs font-semibold text-emerald-600 truncate">{myState.position}</div>
                         <div className="font-medium text-slate-900 truncate">{myState.candidateName}</div>
                       </div>
                     ) : (
@@ -378,7 +357,7 @@ function RecruiterView({ slots, onToggleActive }) {
           <div className="space-y-4">
             <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border">
               <div className="text-sm font-medium flex items-center gap-2"><List className="w-4 h-4 text-indigo-500" /> Jadwal Terkonfirmasi</div>
-              <select value={filterRecap} onChange={(e) => setFilterRecap(e.target.value)} className="bg-white border text-sm rounded-md p-1.5 outline-none">
+              <select value={filterRecap} onChange={(e) => setFilterRecap(e.target.value)} className="bg-white border text-sm rounded-md p-1.5 outline-none font-medium">
                 <option value="saya">Jadwal Saya</option>
                 <option value="semua">Semua Jadwal Tim</option>
               </select>
@@ -389,17 +368,19 @@ function RecruiterView({ slots, onToggleActive }) {
                   <tr>
                     <th className="py-3 px-4 font-semibold">Waktu</th>
                     <th className="py-3 px-4 font-semibold">Kandidat</th>
+                    <th className="py-3 px-4 font-semibold">Posisi</th>
                     <th className="py-3 px-4 font-semibold">Rekruter</th>
                     <th className="py-3 px-4 font-semibold">GMeet</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredBookings.length === 0 ? (
-                    <tr><td colSpan="4" className="py-12 text-center text-slate-500">Belum ada jadwal.</td></tr>
+                    <tr><td colSpan="5" className="py-12 text-center text-slate-500">Belum ada jadwal.</td></tr>
                   ) : filteredBookings.map((b, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
                       <td className="py-3 px-4"><div className="font-semibold">{b.day}</div><div className="text-slate-500">{b.time}</div></td>
                       <td className="py-3 px-4"><div className="font-medium">{b.candidateName}</div></td>
+                      <td className="py-3 px-4"><div className="text-slate-700">{b.position}</div></td>
                       <td className="py-3 px-4"><span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100">{b.recruiterName}</span></td>
                       <td className="py-3 px-4">
                         <a href={b.meetLink} target="_blank" rel="noopener noreferrer" className="text-indigo-600 font-medium px-3 py-1.5 bg-indigo-50 rounded-lg flex items-center gap-1 w-fit"><Video className="w-4 h-4" /> Buka</a>
@@ -421,7 +402,7 @@ function CandidateView({ slots, fetchData, setSlots }) {
   const visibleDates = ALL_DATES.filter(d => d.weekOffset === weekOffset);
   const [selectedDateId, setSelectedDateId] = useState(visibleDates[0].id);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [candidateForm, setCandidateForm] = useState({ name: '', email: '', file: null });
+  const [candidateForm, setCandidateForm] = useState({ name: '', email: '', position: '', file: null, recruiterId: '' });
   const [successData, setSuccessData] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -439,7 +420,7 @@ function CandidateView({ slots, fetchData, setSlots }) {
   const handleBook = async (e) => {
     e.preventDefault();
     setErrorMessage("");
-    if (candidateForm.name && candidateForm.email && selectedSlot) {
+    if (candidateForm.name && candidateForm.email && candidateForm.position && candidateForm.recruiterId && selectedSlot) {
       setIsSubmitting(true);
       try {
         let fileBase64 = "";
@@ -449,19 +430,15 @@ function CandidateView({ slots, fetchData, setSlots }) {
           fileName = candidateForm.file.name;
         }
 
-        // Cari Rekruter yang tersedia
-        const availableEntry = Object.entries(selectedSlot.recruitersState).find(([_, data]) => !data.isBooked);
-        if (!availableEntry) throw new Error("Slot ini baru saja dipesan oleh orang lain.");
-        
-        const recruiterId = availableEntry[0];
-        const assignedRecruiter = RECRUITERS.find(r => r.id === recruiterId);
+        const assignedRecruiter = RECRUITERS.find(r => r.id === candidateForm.recruiterId);
 
         const payload = {
           action: 'bookSlot',
           candidateName: candidateForm.name,
           candidateEmail: candidateForm.email,
-          dateId: selectedSlot.dateId, // YYYY-MM-DD
-          timeStr: selectedSlot.time,  // 09:00 - 09:20
+          position: candidateForm.position,
+          dateId: selectedSlot.dateId, 
+          timeStr: selectedSlot.time, 
           fileBase64: fileBase64,
           fileName: fileName,
           recruiterId: assignedRecruiter.id,
@@ -477,15 +454,15 @@ function CandidateView({ slots, fetchData, setSlots }) {
         
         if(resData.status !== "success") throw new Error(resData.message || "Server error");
 
-        // Perbarui state lokal dan tampilkan hasil
         setSuccessData({
           ...selectedSlot,
           candidateName: candidateForm.name,
+          position: candidateForm.position,
           assignedRecruiter,
-          meetLink: resData.meetLink // Diambil dari backend Google
+          meetLink: resData.meetLink 
         });
 
-        fetchData(); // Refresh keseluruhan data agar Rekap sinkron
+        fetchData(); 
         
       } catch (error) {
         setErrorMessage(error.message || "Mohon maaf, koneksi ke database gagal.");
@@ -493,9 +470,11 @@ function CandidateView({ slots, fetchData, setSlots }) {
         setIsSubmitting(false);
         if(!errorMessage) {
           setSelectedSlot(null);
-          setCandidateForm({ name: '', email: '', file: null });
+          setCandidateForm({ name: '', email: '', position: '', file: null, recruiterId: '' });
         }
       }
+    } else {
+      setErrorMessage("Harap lengkapi semua data, termasuk memilih Posisi dan Rekruter.");
     }
   };
 
@@ -506,7 +485,7 @@ function CandidateView({ slots, fetchData, setSlots }) {
           <div className="bg-emerald-500 p-8 text-center text-white">
             <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm"><CheckCircle className="w-10 h-10" /></div>
             <h2 className="text-2xl font-bold mb-2">Jadwal Berhasil Dikonfirmasi!</h2>
-            <p className="text-emerald-50">Cek email Anda untuk undangan Kalender & Google Meet.</p>
+            <p className="text-emerald-50">Posisi: {successData.position} | Rekruter: {successData.assignedRecruiter.name}</p>
           </div>
           <div className="p-8 space-y-6">
             <div className="p-5 border-2 border-indigo-100 bg-indigo-50/50 rounded-xl">
@@ -516,12 +495,12 @@ function CandidateView({ slots, fetchData, setSlots }) {
               </a>
               <div className="flex gap-3 items-start bg-amber-50 p-4 rounded-lg border border-amber-200 text-amber-900">
                 <ShieldAlert className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
-                <div className="text-sm leading-relaxed">
+                <div className="text-sm leading-relaxed font-medium">
                   <strong>Penting:</strong> Anda wajib masuk sesuai jam. Anda akan ditempatkan di <strong>Ruang Tunggu (Waiting Room)</strong> terlebih dahulu dan harus menunggu persetujuan rekruter untuk masuk.
                 </div>
               </div>
             </div>
-            <button onClick={() => setSuccessData(null)} className="w-full py-3 bg-slate-900 text-white rounded-xl font-medium mt-4">Selesai & Kembali</button>
+            <button onClick={() => setSuccessData(null)} className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold mt-4">Selesai & Kembali</button>
           </div>
         </div>
       </div>
@@ -535,29 +514,23 @@ function CandidateView({ slots, fetchData, setSlots }) {
       </div>
       
       <div className="flex justify-center gap-3 mb-6">
-        <button 
-          onClick={() => changeWeek(0)} 
-          className={`px-6 py-2 text-sm font-bold rounded-full transition-colors ${weekOffset === 0 ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-200'}`}
-        >
-          Minggu Ini
-        </button>
-        <button 
-          onClick={() => changeWeek(1)} 
-          className={`px-6 py-2 text-sm font-bold rounded-full transition-colors ${weekOffset === 1 ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-200'}`}
-        >
-          Minggu Depan
-        </button>
+        <button onClick={() => changeWeek(0)} className={`px-6 py-2 text-sm font-bold rounded-full transition-colors ${weekOffset === 0 ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-200'}`}>Minggu Ini</button>
+        <button onClick={() => changeWeek(1)} className={`px-6 py-2 text-sm font-bold rounded-full transition-colors ${weekOffset === 1 ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-50 border border-slate-200'}`}>Minggu Depan</button>
       </div>
 
       <div className="flex overflow-x-auto gap-3 mb-8 pb-2">
         {visibleDates.map(dateObj => (
-          <button key={dateObj.id} onClick={() => {setSelectedDateId(dateObj.id); setSelectedSlot(null);}} className={`px-5 py-3 rounded-2xl text-sm font-semibold transition-all border whitespace-nowrap ${selectedDateId === dateObj.id ? 'border-indigo-600 bg-indigo-600 text-white' : 'bg-white text-slate-600'}`}>{dateObj.label}</button>
+          <button key={dateObj.id} onClick={() => {setSelectedDateId(dateObj.id); setSelectedSlot(null); setCandidateForm({...candidateForm, recruiterId: ''});}} className={`px-5 py-3 rounded-2xl text-sm font-semibold transition-all border whitespace-nowrap ${selectedDateId === dateObj.id ? 'border-indigo-600 bg-indigo-600 text-white' : 'bg-white text-slate-600'}`}>{dateObj.label}</button>
         ))}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {daySlots.map(slot => {
-          const availableCount = Object.values(slot.recruitersState).filter(state => !state.isBooked).length;
-          const totalOpen = Object.values(slot.recruitersState).length;
+          // Hanya ambil rekruter yang statusnya BUKA dan BELUM DIBOOKING di jam tersebut
+          const availableRecruiters = Object.entries(slot.recruitersState)
+            .filter(([id, data]) => !data.isBooked)
+            .map(([id]) => RECRUITERS.find(r => r.id === id));
+            
+          const availableCount = availableRecruiters.length;
           const isDisabled = availableCount === 0;
           const isSelected = selectedSlot?.id === slot.id;
 
@@ -566,37 +539,62 @@ function CandidateView({ slots, fetchData, setSlots }) {
               <div className="p-5">
                 <div className="flex justify-between items-center mb-4">
                   <div className={`flex items-center font-bold text-lg ${isDisabled ? 'text-slate-500' : 'text-slate-900'}`}><Clock className="w-5 h-5 mr-2" />{slot.time}</div>
-                  {availableCount > 0 ? <span className="text-xs font-semibold px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md">Tersedia Slot</span> : <span className="text-xs font-semibold px-2 py-1 bg-slate-200 text-slate-600 rounded-md">Penuh</span>}
+                  {availableCount > 0 ? <span className="text-xs font-semibold px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md">Tersedia {availableCount} Rekruter</span> : <span className="text-xs font-semibold px-2 py-1 bg-slate-200 text-slate-600 rounded-md">Penuh</span>}
                 </div>
                 {isSelected ? (
                   <form onSubmit={handleBook} className="space-y-3 mt-3 animate-in fade-in">
                     {errorMessage && <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-md font-semibold">{errorMessage}</div>}
                     
-                    <input type="text" required disabled={isSubmitting} placeholder="Nama Lengkap" value={candidateForm.name} onChange={(e) => setCandidateForm({...candidateForm, name: e.target.value})} className="w-full text-sm rounded-md border px-3 py-2" />
-                    <input type="email" required disabled={isSubmitting} placeholder="Email" value={candidateForm.email} onChange={(e) => setCandidateForm({...candidateForm, email: e.target.value})} className="w-full text-sm rounded-md border px-3 py-2" />
-                    
-                    {/* BAGIAN UPLOAD FILE YANG DIPERBARUI */}
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-600">Upload form lamaran Audy Dental (Format PDF)</label>
-                      <input 
-                        type="file" 
-                        accept=".pdf"
+                      <label className="text-xs font-semibold text-slate-600">Pilih Rekruter</label>
+                      <select 
                         required 
                         disabled={isSubmitting} 
-                        onChange={(e) => setCandidateForm({...candidateForm, file: e.target.files[0]})} 
-                        className="w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" 
-                      />
+                        value={candidateForm.recruiterId}
+                        onChange={(e) => setCandidateForm({...candidateForm, recruiterId: e.target.value})} 
+                        className="w-full text-sm rounded-md border px-3 py-2 bg-white font-medium"
+                      >
+                        <option value="" disabled>-- Klik untuk memilih rekruter --</option>
+                        {availableRecruiters.map(r => (
+                          <option key={r.id} value={r.id}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">Posisi yang Dilamar</label>
+                      <select 
+                        required 
+                        disabled={isSubmitting} 
+                        value={candidateForm.position}
+                        onChange={(e) => setCandidateForm({...candidateForm, position: e.target.value})} 
+                        className="w-full text-sm rounded-md border px-3 py-2 bg-white font-medium"
+                      >
+                        <option value="" disabled>-- Pilih Posisi --</option>
+                        <option value="Perawat Gigi">Perawat Gigi</option>
+                        <option value="Resepsionis">Resepsionis</option>
+                        <option value="Branch Spv">Branch Spv</option>
+                        <option value="Head Office">Head Office</option>
+                      </select>
+                    </div>
+
+                    <input type="text" required disabled={isSubmitting} placeholder="Nama Lengkap" value={candidateForm.name} onChange={(e) => setCandidateForm({...candidateForm, name: e.target.value})} className="w-full text-sm rounded-md border px-3 py-2 font-medium" />
+                    <input type="email" required disabled={isSubmitting} placeholder="Email" value={candidateForm.email} onChange={(e) => setCandidateForm({...candidateForm, email: e.target.value})} className="w-full text-sm rounded-md border px-3 py-2 font-medium" />
+                    
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">Upload form lamaran Audy Dental (Format PDF)</label>
+                      <input type="file" accept=".pdf" required disabled={isSubmitting} onChange={(e) => setCandidateForm({...candidateForm, file: e.target.files[0]})} className="w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
                     </div>
 
                     <div className="flex gap-2 pt-1">
-                      <button type="button" onClick={(e) => {e.stopPropagation(); setSelectedSlot(null);}} className="flex-1 py-2 text-sm bg-slate-100 rounded-lg font-medium">Batal</button>
-                      <button type="submit" disabled={isSubmitting} className="flex-1 py-2 text-sm text-white bg-indigo-600 rounded-lg flex justify-center items-center font-medium">
+                      <button type="button" onClick={(e) => {e.stopPropagation(); setSelectedSlot(null); setCandidateForm({...candidateForm, recruiterId: '', position: ''});}} className="flex-1 py-2 text-sm bg-slate-100 rounded-lg font-bold">Batal</button>
+                      <button type="submit" disabled={isSubmitting} className="flex-1 py-2 text-sm text-white bg-indigo-600 rounded-lg flex justify-center items-center font-bold">
                         {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Konfirmasi'}
                       </button>
                     </div>
                   </form>
                 ) : (
-                  <button disabled={isDisabled} className={`w-full py-2 px-4 text-sm font-semibold rounded-lg ${isDisabled ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-700'}`}>Pilih Jadwal</button>
+                  <button disabled={isDisabled} className={`w-full py-2 px-4 text-sm font-bold rounded-lg ${isDisabled ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-700'}`}>Pilih Jadwal</button>
                 )}
               </div>
             </div>
